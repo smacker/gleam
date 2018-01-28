@@ -88,7 +88,6 @@ func (ds *GitShardInfo) ReadSplit() error {
 
 	switch {
 	case ds.GitDataType == "references":
-		log.Printf("REF CASE: %s", ds.GitDataType)
 		refs, _ := r.References()
 		refs.ForEach(func(ref *plumbing.Reference) error {
 			if ref.Hash().IsZero() {

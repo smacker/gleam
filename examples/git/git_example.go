@@ -52,30 +52,31 @@ func main() {
 	f := flow.New("Git pipeline")
 	path := "/Users/smacker/Dev/**"
 
-	heads := f.Read(git.Repositories(path, 1)).Map("key", flip1)
-	commits := f.Read(git.Commits(path, 1)).Map("key", flip1)
-
-	hashes := make(map[string][]string)
-	heads.LeftOuterJoinByKey("heads join commits", commits).
-		Select("select", flow.Field(1, 2, 5)).
-		Map("key", flip2).
-		Select("hash", flow.Field(1, 3)).
+	headHashes := make(map[string][]string)
+	f.Read(git.Repositories(path, 1)).
+		Select("head", flow.Field(1, 2)).
 		OutputRow(func(row *util.Row) error {
-			r := row.V[0].(string)
-			hashes[r] = append(hashes[r], row.K[0].(string))
+			r := row.K[0].(string)
+			v := row.V[0].(string)
+			headHashes[r] = append(headHashes[r], v)
 			return nil
 		})
 
 	run(f)
 
-	f.Read(git.Trees(path, 1).Where(hashes)).
+	treeHashes := make(map[string][]string)
+	f.Read(git.Commits(path, 1).Where(headHashes)).
+		Select("threeHash", flow.Field(1, 3)).
 		OutputRow(func(row *util.Row) error {
-			fmt.Printf("\n\n%s\t", toPrint(row.K[0]))
-			for _, v := range row.V {
-				fmt.Printf("%s\t", toPrint(v))
-			}
+			r := row.K[0].(string)
+			v := row.V[0].(string)
+			treeHashes[r] = append(treeHashes[r], v)
 			return nil
 		})
+
+	run(f)
+
+	f.Read(git.Trees(path, 1).Where(treeHashes)).Select("name", flow.Field(3)).Printlnf("%s")
 
 	run(f)
 }

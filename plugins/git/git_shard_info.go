@@ -100,7 +100,7 @@ func (ds *GitShardInfo) ReadSplit() error {
 			}
 			return nil
 		})
-	case ds.GitDataType == "trees" && len(ds.Hashes) > 0:
+	case len(ds.Hashes) > 0:
 		for {
 			row, err := reader.ByHashes()
 			if err != nil {

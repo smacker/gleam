@@ -1,6 +1,8 @@
 package references
 
 import (
+	"errors"
+
 	"github.com/chrislusf/gleam/util"
 	git "gopkg.in/src-d/go-git.v4"
 	storer "gopkg.in/src-d/go-git.v4/plumbing/storer"
@@ -11,7 +13,7 @@ type ReferencesGitReader struct {
 	refs         storer.ReferenceIter
 }
 
-func New(r *git.Repository, path string) *ReferencesGitReader {
+func New(r *git.Repository, path string, hashes []string) *ReferencesGitReader {
 
 	refs, _ := r.References()
 	return &ReferencesGitReader{
@@ -39,4 +41,8 @@ func (r *ReferencesGitReader) Read() (row *util.Row, err error) {
 	}
 
 	return util.NewRow(util.Now(), r.repositoryID, ref.Hash().String(), ref.Name().String()), nil
+}
+
+func (r *ReferencesGitReader) ByHashes() (row *util.Row, err error) {
+	return nil, errors.New("not implemented")
 }

@@ -15,6 +15,7 @@ import (
 type GitReader interface {
 	Read() (row *util.Row, err error)
 	ReadHeader() (fieldNames []string, err error)
+	ByHashes() (row *util.Row, err error)
 }
 
 func Repositories(fileOrPattern string, partitionCount int) *GitSource {
@@ -33,18 +34,18 @@ func Blobs(fileOrPattern string, partitionCount int) *GitSource {
 	return newGitSource("blobs", fileOrPattern, partitionCount)
 }
 
-func (ds *GitShardInfo) NewReader(r *git.Repository, path string) (GitReader, error) {
+func (ds *GitShardInfo) NewReader(r *git.Repository, path string, hashes []string) (GitReader, error) {
 	switch ds.GitDataType {
 	case "repositories":
-		return repositories.New(r, path), nil
+		return repositories.New(r, path, hashes), nil
 	case "references":
-		return references.New(r, path), nil
+		return references.New(r, path, hashes), nil
 	case "commits":
-		return commits.New(r, path), nil
+		return commits.New(r, path, hashes), nil
 	case "trees":
-		return trees.New(r, path), nil
+		return trees.New(r, path, hashes), nil
 	case "blobs":
-		return blobs.New(r, path), nil
+		return blobs.New(r, path, hashes), nil
 	}
 	return nil, fmt.Errorf("Git data source '%s' is not defined.", ds.GitDataType)
 }

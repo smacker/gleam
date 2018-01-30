@@ -21,6 +21,8 @@ type GitShardInfo struct {
 	GitDataType string
 	HasHeader   bool
 	Fields      []string
+
+	Hashes []string
 }
 
 var (
@@ -70,7 +72,6 @@ func getRefChildren(path string, refHash string, refName string) error {
 }
 
 func (ds *GitShardInfo) ReadSplit() error {
-
 	println("opening repo", ds.RepoPath)
 
 	r, err := git.PlainOpen(ds.RepoPath)
@@ -78,7 +79,7 @@ func (ds *GitShardInfo) ReadSplit() error {
 		return err
 	}
 
-	reader, err := ds.NewReader(r, ds.RepoPath)
+	reader, err := ds.NewReader(r, ds.RepoPath, ds.Hashes)
 	if err != nil {
 		return fmt.Errorf("Failed to read repository %s: %v", ds.RepoPath, err)
 	}
@@ -99,6 +100,18 @@ func (ds *GitShardInfo) ReadSplit() error {
 			}
 			return nil
 		})
+	case ds.GitDataType == "trees" && len(ds.Hashes) > 0:
+		for {
+			row, err := reader.ByHashes()
+			if err != nil {
+				break
+			}
+			if row == nil {
+				continue
+			}
+
+			row.WriteTo(os.Stdout)
+		}
 	default:
 		for {
 			row, err := reader.Read()

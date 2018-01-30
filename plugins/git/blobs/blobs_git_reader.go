@@ -1,6 +1,8 @@
 package blobs
 
 import (
+	"errors"
+
 	"github.com/chrislusf/gleam/util"
 	git "gopkg.in/src-d/go-git.v4"
 	"gopkg.in/src-d/go-git.v4/plumbing/object"
@@ -11,7 +13,7 @@ type BlobsGitReader struct {
 	blobs        *object.BlobIter
 }
 
-func New(r *git.Repository, path string) *BlobsGitReader {
+func New(r *git.Repository, path string, hashes []string) *BlobsGitReader {
 
 	blobs, _ := r.BlobObjects()
 
@@ -38,4 +40,8 @@ func (r *BlobsGitReader) Read() (row *util.Row, err error) {
 	}
 
 	return util.NewRow(util.Now(), r.repositoryID, blob.Hash.String(), blob.Size), nil
+}
+
+func (r *BlobsGitReader) ByHashes() (row *util.Row, err error) {
+	return nil, errors.New("not implemented")
 }

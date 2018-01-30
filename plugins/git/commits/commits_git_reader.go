@@ -1,6 +1,8 @@
 package commits
 
 import (
+	"errors"
+
 	"github.com/chrislusf/gleam/util"
 	git "gopkg.in/src-d/go-git.v4"
 	"gopkg.in/src-d/go-git.v4/plumbing"
@@ -13,7 +15,7 @@ type CommitsGitReader struct {
 	refs         map[string]struct{}
 }
 
-func New(r *git.Repository, path string) *CommitsGitReader {
+func New(r *git.Repository, path string, hashes []string) *CommitsGitReader {
 
 	refs, _ := r.References()
 	commits, _ := r.CommitObjects()
@@ -95,4 +97,8 @@ func (r *CommitsGitReader) Read() (row *util.Row, err error) {
 		committerName,
 		committerDate,
 	), nil
+}
+
+func (r *CommitsGitReader) ByHashes() (row *util.Row, err error) {
+	return nil, errors.New("not implemented")
 }

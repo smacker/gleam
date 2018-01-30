@@ -1,6 +1,7 @@
 package repositories
 
 import (
+	"errors"
 	"io"
 
 	"github.com/chrislusf/gleam/util"
@@ -12,7 +13,7 @@ type RepositoriesGitReader struct {
 	repos        *reposIter
 }
 
-func New(r *git.Repository, path string) *RepositoriesGitReader {
+func New(r *git.Repository, path string, hashes []string) *RepositoriesGitReader {
 
 	return &RepositoriesGitReader{
 		repos:        newReposIter(r),
@@ -51,6 +52,10 @@ func (r *RepositoriesGitReader) Read() (row *util.Row, err error) {
 	}
 
 	return util.NewRow(util.Now(), r.repositoryID, head.Hash().String(), remoteURLs), nil
+}
+
+func (r *RepositoriesGitReader) ByHashes() (row *util.Row, err error) {
+	return nil, errors.New("not implemented")
 }
 
 type reposIter struct {

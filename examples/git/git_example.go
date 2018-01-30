@@ -31,34 +31,12 @@ var (
 	regExtractUAST      = gio.RegisterMapper(extractUAST)
 )
 
-func main() {
-	gio.Init()
+var (
+	flip1 = gio.RegisterMapper(flipKey(1))
+	flip2 = gio.RegisterMapper(flipKey(2))
+)
 
-	f := flow.New("Git pipeline")
-	path := "/home/mthek/projects/enginerepos-srcd/ml"
-
-	repos := f.Read(git.Repositories(path, 1))
-	refs := f.Read(git.References(path, 1))
-	commits := f.Read(git.Commits(path, 1)).
-		Map("KeyCommitHash", regKeyCommitHash)
-	//trees := f.Read(git.Trees(path, 1)).
-	//	Map("KeyTreeHash", regKeyTreeHash)
-
-	joinA := refs.JoinByKey("Refs & Repos", repos).
-		Map("KeyRefHash", regKeyRefHash)
-	joinB := joinA.LeftOuterJoinByKey("Refs & Commits", commits)
-	//joinC := trees.JoinByKey("Trees & Commits", joinB)
-
-	p := joinB.OutputRow(func(row *util.Row) error {
-		fmt.Printf("\n\n%s\t", toPrint(row.K[0]))
-		i := 0
-		for _, v := range row.V {
-			fmt.Printf("%s\t", toPrint(v))
-			i++
-		}
-		return nil
-	})
-
+func run(p *flow.Flow) {
 	if *isDistributed {
 		p.Run(distributed.Option())
 	} else if *isDockerCluster {
@@ -66,6 +44,40 @@ func main() {
 	} else {
 		p.Run()
 	}
+}
+
+func main() {
+	gio.Init()
+
+	f := flow.New("Git pipeline")
+	path := "/Users/smacker/Dev/**"
+
+	heads := f.Read(git.Repositories(path, 1)).Map("key", flip1)
+	commits := f.Read(git.Commits(path, 1)).Map("key", flip1)
+
+	hashes := make(map[string][]string)
+	heads.LeftOuterJoinByKey("heads join commits", commits).
+		Select("select", flow.Field(1, 2, 5)).
+		Map("key", flip2).
+		Select("hash", flow.Field(1, 3)).
+		OutputRow(func(row *util.Row) error {
+			r := row.V[0].(string)
+			hashes[r] = append(hashes[r], row.K[0].(string))
+			return nil
+		})
+
+	run(f)
+
+	f.Read(git.Trees(path, 1).Where(hashes)).
+		OutputRow(func(row *util.Row) error {
+			fmt.Printf("\n\n%s\t", toPrint(row.K[0]))
+			for _, v := range row.V {
+				fmt.Printf("%s\t", toPrint(v))
+			}
+			return nil
+		})
+
+	run(f)
 }
 
 func flipKey(newKeyIdx int) gio.Mapper {

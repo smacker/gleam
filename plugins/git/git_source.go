@@ -24,6 +24,8 @@ type GitSource struct {
 	GitDataType    string
 	Fields         []string
 
+	Hashes map[string][]string
+
 	prefix string
 }
 
@@ -37,6 +39,11 @@ func (s *GitSource) Generate(f *flow.Flow) *flow.Dataset {
 // Select selects fields that can be pushed down to data sources supporting columnar reads
 func (q *GitSource) Select(fields ...string) *GitSource {
 	q.Fields = fields
+	return q
+}
+
+func (q *GitSource) Where(hashes map[string][]string) *GitSource {
+	q.Hashes = hashes
 	return q
 }
 
@@ -87,6 +94,7 @@ func (s *GitSource) genShardInfos(f *flow.Flow) *flow.Dataset {
 				GitDataType: s.GitDataType,
 				HasHeader:   s.HasHeader,
 				Fields:      s.Fields,
+				Hashes:      s.Hashes[s.Path],
 			})).WriteTo(writer)
 			return nil
 		}
@@ -114,6 +122,7 @@ func (s *GitSource) gitRepos(folder string, writer io.Writer, stats *pb.Instruct
 				GitDataType: s.GitDataType,
 				HasHeader:   s.HasHeader,
 				Fields:      s.Fields,
+				Hashes:      s.Hashes[vf.Location],
 			})).WriteTo(writer)
 			continue
 		}

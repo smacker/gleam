@@ -81,7 +81,7 @@ func (r *Reader) Read() (*util.Row, error) {
 	commit, err := r.commitsIter.Next()
 	if err == io.EOF {
 		r.commitsIter = nil
-		return nil, nil
+		return r.Read()
 	}
 	if err != nil {
 		return nil, err

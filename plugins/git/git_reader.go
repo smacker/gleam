@@ -29,6 +29,10 @@ func Blobs(path string, partitionCount int) flow.Sourcer {
 	return newGitSource("blobs", path, partitionCount)
 }
 
+func NewRepositories(path string, partitionCount int) *sourceRepositories {
+	return newSourceRepositories(path, partitionCount)
+}
+
 type reader interface {
 	Read() (*util.Row, error)
 	ReadHeader() ([]string, error)
@@ -39,7 +43,23 @@ func (ds *shardInfo) NewReader(r *git.Repository, path string, flag bool) (reade
 	case "repositories":
 		return repositories.NewReader(r, path)
 	case "references":
-		return references.NewReader(r, path)
+		return references.NewReader(r, path, nil)
+	case "commits":
+		return commits.NewReader(r, path)
+	case "trees":
+		return trees.NewReader(r, path, flag)
+	case "blobs":
+		return blobs.NewReader(r, path)
+	}
+	return nil, fmt.Errorf("unkown data type %q", ds.DataType)
+}
+
+func (ds *newShardInfo) NewReader(r *git.Repository, path string, flag bool) (reader, error) {
+	switch ds.DataType {
+	case "repositories":
+		return repositories.NewReader(r, path)
+	case "references":
+		return references.NewReader(r, path, ds.FilterRefs)
 	case "commits":
 		return commits.NewReader(r, path)
 	case "trees":

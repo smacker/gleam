@@ -23,11 +23,22 @@ type Reader struct {
 	refIsRemote   string
 }
 
-func NewReader(repo *git.Repository, path string) (*Reader, error) {
+func NewReader(repo *git.Repository, path string, onlyRefs []string) (*Reader, error) {
+	var refs storer.ReferenceIter
+
+	if len(onlyRefs) > 0 {
+		var refsNames []plumbing.ReferenceName
+		for _, name := range onlyRefs {
+			refsNames = append(refsNames, plumbing.ReferenceName(name))
+		}
+		refs = &iterator{repo: repo, refNames: refsNames}
+	}
+
 	refs, err := repo.References()
 	if err != nil {
 		return nil, errors.Wrap(err, "could not fetch references from repository")
 	}
+
 	return &Reader{
 		repositoryID: path,
 		repo:         repo,

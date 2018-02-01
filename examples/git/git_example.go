@@ -93,6 +93,10 @@ func queryExample(path, query string) (*flow.Dataset, []flow.FlowOption, error) 
 		p = commits
 	case "trees":
 		p = trees
+	case "new-api-all-refs":
+		p = f.Read(git.NewRepositories(path, 1).References())
+	case "new-api-head-trees":
+		p = f.Read(git.NewRepositories(path, 1).References().Filter("HEAD").Commits().Trees())
 	default:
 		return nil, nil, errors.New("this query is not implemented")
 	}

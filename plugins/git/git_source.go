@@ -141,3 +141,126 @@ func (s *source) isRepo(path string) bool {
 	}
 	return true
 }
+
+type baseSource struct {
+	partitionCount int
+	// where to read from
+	folder       string
+	fileBaseName string
+	hasWildcard  bool
+	path         string
+	hasHeader    bool
+	prefix       string
+
+	FilterRefs []string
+}
+
+type sourceRepositories struct {
+	baseSource
+}
+
+type sourceReferences struct {
+	baseSource
+}
+
+type sourceCommits struct {
+	baseSource
+}
+
+type sourceTrees struct {
+	baseSource
+}
+
+type sourceBlobs struct {
+	baseSource
+}
+
+func newSourceRepositories(fsPath string, partitionCount int) *sourceRepositories {
+	base := filepath.Base(fsPath)
+
+	return &sourceRepositories{
+		baseSource: baseSource{
+			partitionCount: partitionCount,
+			hasHeader:      true,
+			folder:         filepath.Dir(fsPath),
+			fileBaseName:   base,
+			path:           fsPath,
+			hasWildcard:    strings.Contains(base, "**"),
+			prefix:         "repositories",
+		},
+	}
+}
+
+func (s *baseSource) Generate(f *flow.Flow) *flow.Dataset {
+	return s.genShardInfos(f).RoundRobin(s.prefix, s.partitionCount).Map(s.prefix+".Read", regMapperNewReadShard)
+}
+
+func (s *baseSource) genShardInfos(f *flow.Flow) *flow.Dataset {
+	return f.Source(s.prefix+"."+s.path, func(out io.Writer, stats *pb.InstructionStat) error {
+		stats.InputCounter++
+		defer func() { log.Printf("Git repos: %d", stats.OutputCounter) }()
+
+		// if s.hasWildcard {
+		// 	return s.gitRepos(s.folder, out, stats)
+		// }
+
+		if !filesystem.IsDir(s.path) {
+			return errors.New("source can't be be a file")
+		}
+
+		// if !s.isRepo(s.path) {
+		// 	return s.gitRepos(s.path, out, stats)
+		// }
+
+		stats.OutputCounter++
+		s := &newShardInfo{
+			RepoPath:   s.path,
+			DataType:   s.prefix,
+			HasHeader:  s.hasHeader,
+			FilterRefs: s.FilterRefs,
+		}
+		b, err := s.encode()
+		if err != nil {
+			// TODO: improve error handling.
+			log.Fatalf("could not encode shard info: %v", err)
+		}
+		return util.NewRow(util.Now(), b).WriteTo(out)
+	})
+}
+
+func (s *sourceRepositories) References() *sourceReferences {
+	newSource := s.baseSource
+	newSource.prefix = "references"
+	return &sourceReferences{
+		baseSource: newSource,
+	}
+}
+
+func (s *sourceReferences) Filter(refs ...string) *sourceReferences {
+	s.baseSource.FilterRefs = refs
+	return s
+}
+
+func (s *sourceReferences) Commits() *sourceCommits {
+	newSource := s.baseSource
+	newSource.prefix = "commits"
+	return &sourceCommits{
+		baseSource: newSource,
+	}
+}
+
+func (s *sourceCommits) Trees() *sourceTrees {
+	newSource := s.baseSource
+	newSource.prefix = "trees"
+	return &sourceTrees{
+		baseSource: newSource,
+	}
+}
+
+func (s *sourceTrees) Blobs() *sourceBlobs {
+	newSource := s.baseSource
+	newSource.prefix = "blobs"
+	return &sourceBlobs{
+		baseSource: newSource,
+	}
+}

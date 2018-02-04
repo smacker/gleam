@@ -49,22 +49,7 @@ func (r *References) Read() (*util.Row, error) {
 		return nil, err
 	}
 
-	// Get correct commit hash
-	// there is Repository.ResolveRevision but it fails on some tags and performance is worst
-	refCommitHash := ref.Hash()
-	// handle symbolic references like HEAD
-	if ref.Type() == plumbing.SymbolicReference {
-		targetRef, _ := r.repo.Reference(ref.Target(), true)
-		refCommitHash = targetRef.Hash()
-	}
-
-	// handle tag references
-	tag, err := r.repo.TagObject(refCommitHash)
-	if err == nil {
-		commit, _ := tag.Commit()
-		refCommitHash = commit.Hash
-	}
-
+	refCommitHash := resolveRef(r.repo, ref)
 	return util.NewRow(util.Now(),
 		r.repositoryID,
 		refCommitHash.String(),
@@ -139,3 +124,23 @@ func (iter *refIterator) ForEach(cb func(*plumbing.Reference) error) error {
 }
 
 func (iter *refIterator) Close() {}
+
+// Get correct commit hash
+// there is Repository.ResolveRevision but it fails on some tags and performance is worst
+func resolveRef(repo *git.Repository, ref *plumbing.Reference) plumbing.Hash {
+	refCommitHash := ref.Hash()
+	// handle symbolic references like HEAD
+	if ref.Type() == plumbing.SymbolicReference {
+		targetRef, _ := repo.Reference(ref.Target(), true)
+		refCommitHash = targetRef.Hash()
+	}
+
+	// handle tag references
+	tag, err := repo.TagObject(refCommitHash)
+	if err == nil {
+		commit, _ := tag.Commit()
+		refCommitHash = commit.Hash
+	}
+
+	return refCommitHash
+}

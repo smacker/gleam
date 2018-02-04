@@ -5,7 +5,6 @@ import (
 
 	"github.com/chrislusf/gleam/util"
 	git "gopkg.in/src-d/go-git.v4"
-	"gopkg.in/src-d/go-git.v4/plumbing"
 	"gopkg.in/src-d/go-git.v4/plumbing/object"
 	storer "gopkg.in/src-d/go-git.v4/plumbing/storer"
 )
@@ -176,23 +175,3 @@ func (iter *allCommitsIterator) ForEach(cb func(*object.Commit) error) error {
 }
 
 func (iter *allCommitsIterator) Close() {}
-
-// Get correct commit hash
-// there is Repository.ResolveRevision but it fails on some tags and performance is worst
-func resolveRef(repo *git.Repository, ref *plumbing.Reference) plumbing.Hash {
-	refCommitHash := ref.Hash()
-	// handle symbolic references like HEAD
-	if ref.Type() == plumbing.SymbolicReference {
-		targetRef, _ := repo.Reference(ref.Target(), true)
-		refCommitHash = targetRef.Hash()
-	}
-
-	// handle tag references
-	tag, err := repo.TagObject(refCommitHash)
-	if err == nil {
-		commit, _ := tag.Commit()
-		refCommitHash = commit.Hash
-	}
-
-	return refCommitHash
-}

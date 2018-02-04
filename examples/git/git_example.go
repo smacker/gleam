@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"time"
 
 	"github.com/chrislusf/gleam/flow"
 	"github.com/chrislusf/gleam/gio"
@@ -26,23 +27,35 @@ func main() {
 	}
 	log.Printf("analyzing %s", path)
 
+	st := time.Now()
 	checkAllRefs(path)
 	fmt.Printf("All refs: %d\n", count)
+	fmt.Println(time.Now().Sub(st))
 	count = 0
+	st = time.Now()
 	checkFilterRefs(path, "refs/heads/master")
 	fmt.Printf("Filter refs:%d\n", count)
+	fmt.Println(time.Now().Sub(st))
 	count = 0
+	st = time.Now()
 	checkCommits(path, "refs/heads/master")
 	fmt.Printf("Commits: %d\n", count)
+	fmt.Println(time.Now().Sub(st))
 	count = 0
+	st = time.Now()
 	checkAllCommits(path, "refs/heads/master")
 	fmt.Printf("all commits: %d\n", count)
+	fmt.Println(time.Now().Sub(st))
 	count = 0
+	st = time.Now()
 	checkTrees(path, "refs/heads/master")
 	fmt.Printf("all trees: %d\n", count)
+	fmt.Println(time.Now().Sub(st))
 	count = 0
+	st = time.Now()
 	checkAllCommitsTrees(path, "refs/heads/master")
 	fmt.Printf("all commits trees: %d\n", count)
+	fmt.Println(time.Now().Sub(st))
 	count = 0
 }
 
@@ -94,10 +107,10 @@ var count int64
 func printRow(row *util.Row) error {
 	//	fmt.Printf("\n\n%v\t", row.K[0])
 	count++
-	for _, v := range row.V {
-		fmt.Printf("%v\t", v)
-	}
-	fmt.Println()
+	// for _, v := range row.V {
+	// 	fmt.Printf("%v\t", v)
+	// }
+	// fmt.Println()
 	return nil
 }
 

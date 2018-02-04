@@ -3,34 +3,14 @@ package git
 import (
 	"fmt"
 
-	"github.com/chrislusf/gleam/flow"
-	"github.com/chrislusf/gleam/plugins/git/blobs"
-	"github.com/chrislusf/gleam/plugins/git/commits"
-	"github.com/chrislusf/gleam/plugins/git/references"
+	"github.com/chrislusf/gleam/plugins/git/readers"
 	"github.com/chrislusf/gleam/plugins/git/repositories"
-	"github.com/chrislusf/gleam/plugins/git/trees"
 	"github.com/chrislusf/gleam/util"
 	git "gopkg.in/src-d/go-git.v4"
 )
 
-func Repositories(path string, partitionCount int) flow.Sourcer {
-	return newGitSource("repositories", path, partitionCount)
-}
-func References(path string, partitionCount int) flow.Sourcer {
-	return newGitSource("references", path, partitionCount)
-}
-func Commits(path string, partitionCount int) flow.Sourcer {
-	return newGitSource("commits", path, partitionCount)
-}
-func Trees(path string, flag bool, partitionCount int) flow.Sourcer {
-	return newGitSourceOptions("trees", path, flag, partitionCount)
-}
-func Blobs(path string, partitionCount int) flow.Sourcer {
-	return newGitSource("blobs", path, partitionCount)
-}
-
-func NewRepositories(path string, partitionCount int) *sourceRepositories {
-	return newSourceRepositories(path, partitionCount)
+func Repositories(path string, partitionCount int) *sourceRepositories {
+	return newGitRepositories(path, partitionCount)
 }
 
 type reader interface {
@@ -39,33 +19,41 @@ type reader interface {
 }
 
 func (ds *shardInfo) NewReader(r *git.Repository, path string, flag bool) (reader, error) {
-	switch ds.DataType {
-	case "repositories":
+	if ds.DataType == "repositories" {
 		return repositories.NewReader(r, path)
-	case "references":
-		return references.NewReader(r, path, nil)
-	case "commits":
-		return commits.NewReader(r, path)
-	case "trees":
-		return trees.NewReader(r, path, flag)
-	case "blobs":
-		return blobs.NewReader(r, path)
 	}
-	return nil, fmt.Errorf("unkown data type %q", ds.DataType)
-}
 
-func (ds *newShardInfo) NewReader(r *git.Repository, path string, flag bool) (reader, error) {
-	switch ds.DataType {
-	case "repositories":
-		return repositories.NewReader(r, path)
-	case "references":
-		return references.NewReader(r, path, ds.FilterRefs)
-	case "commits":
-		return commits.NewReader(r, path)
-	case "trees":
-		return trees.NewReader(r, path, flag)
-	case "blobs":
-		return blobs.NewReader(r, path)
+	refsReader, err := readers.NewReferences(r, path, ds.FilterRefs)
+	if err != nil {
+		return nil, err
 	}
+
+	if ds.DataType == "references" {
+		return refsReader, nil
+	}
+
+	refs, err := refsReader.GetIter()
+	if err != nil {
+		return nil, err
+	}
+
+	commitsReader, err := readers.NewCommits(r, path, refs, ds.AllCommits)
+	if err != nil {
+		return nil, err
+	}
+
+	if ds.DataType == "commits" {
+		return commitsReader, nil
+	}
+
+	treesReader, err := readers.NewTrees(r, path, commitsReader.GetIter())
+	if err != nil {
+		return nil, err
+	}
+
+	if ds.DataType == "trees" {
+		return treesReader, nil
+	}
+
 	return nil, fmt.Errorf("unkown data type %q", ds.DataType)
 }

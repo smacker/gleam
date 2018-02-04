@@ -14,134 +14,6 @@ import (
 	"github.com/pkg/errors"
 )
 
-type source struct {
-	folder         string
-	fileBaseName   string
-	hasWildcard    bool
-	path           string
-	hasHeader      bool
-	partitionCount int
-	dataType       string
-	fields         []string
-	optimize       bool
-
-	prefix string
-}
-
-func newGitSourceOptions(dataType, fsPath string, optimize bool, partitionCount int) flow.Sourcer {
-	s := newGitSource(dataType, fsPath, partitionCount).(*source)
-	s.optimize = optimize
-	return s
-}
-
-// New creates a GitSource based on a path.
-func newGitSource(dataType, fsPath string, partitionCount int) flow.Sourcer {
-	base := filepath.Base(fsPath)
-
-	return &source{
-		partitionCount: partitionCount,
-		dataType:       dataType,
-		prefix:         dataType,
-		hasHeader:      true,
-		optimize:       false,
-		folder:         filepath.Dir(fsPath),
-		fileBaseName:   base,
-		path:           fsPath,
-		hasWildcard:    strings.Contains(base, "**"),
-	}
-}
-
-// Generate generates data shard info,
-// partitions them via round robin,
-// and reads each shard on each executor
-func (s *source) Generate(f *flow.Flow) *flow.Dataset {
-	return s.genShardInfos(f).RoundRobin(s.prefix, s.partitionCount).Map(s.prefix+".Read", registeredMapperReadShard)
-}
-
-func (s *source) genShardInfos(f *flow.Flow) *flow.Dataset {
-	return f.Source(s.prefix+"."+s.fileBaseName, func(out io.Writer, stats *pb.InstructionStat) error {
-		stats.InputCounter++
-		defer func() { log.Printf("Git repos: %d", stats.OutputCounter) }()
-
-		if s.hasWildcard {
-			return s.gitRepos(s.folder, out, stats)
-		}
-
-		if !filesystem.IsDir(s.path) {
-			return errors.New("source can't be be a file")
-		}
-
-		if !s.isRepo(s.path) {
-			return s.gitRepos(s.path, out, stats)
-		}
-
-		stats.OutputCounter++
-		s := &shardInfo{
-			RepoPath:  s.path,
-			DataType:  s.dataType,
-			HasHeader: s.hasHeader,
-			Fields:    s.fields,
-			Optimize:  s.optimize,
-		}
-		b, err := s.encode()
-		if err != nil {
-			// TODO: improve error handling.
-			log.Fatalf("could not encocde shard info: %v", err)
-		}
-		return util.NewRow(util.Now(), b).WriteTo(out)
-	})
-}
-
-// Find all repositories in the directory
-func (s *source) gitRepos(folder string, out io.Writer, stats *pb.InstructionStat) error {
-	virtualFiles, err := filesystem.List(folder)
-	if err != nil {
-		return fmt.Errorf("Failed to list folder %s: %v", folder, err)
-	}
-
-	for _, vf := range virtualFiles {
-		if !filesystem.IsDir(vf.Location) || strings.Contains(vf.Location, ".") {
-			continue
-		}
-
-		if !s.isRepo(vf.Location) {
-			err = s.gitRepos(vf.Location, out, stats)
-			if err != nil {
-				return err
-			}
-			continue
-		}
-
-		stats.OutputCounter++
-		s := &shardInfo{
-			RepoPath:  vf.Location,
-			DataType:  s.dataType,
-			HasHeader: s.hasHeader,
-			Fields:    s.fields,
-			Optimize:  s.optimize,
-		}
-
-		b, err := s.encode()
-		if err != nil {
-			return errors.Wrap(err, "could not encode shard info")
-		}
-		if err := util.NewRow(util.Now(), b).WriteTo(out); err != nil {
-			return errors.Wrap(err, "could not encode row")
-		}
-	}
-
-	return nil
-}
-
-func (s *source) isRepo(path string) bool {
-	p := filepath.Join(path, ".git")
-	_, err := filesystem.Open(p)
-	if err != nil {
-		return false
-	}
-	return true
-}
-
 type baseSource struct {
 	partitionCount int
 	// where to read from
@@ -152,7 +24,9 @@ type baseSource struct {
 	hasHeader    bool
 	prefix       string
 
+	// FIXME most probably it shouldn't be here
 	FilterRefs []string
+	allCommits bool
 }
 
 type sourceRepositories struct {
@@ -175,7 +49,7 @@ type sourceBlobs struct {
 	baseSource
 }
 
-func newSourceRepositories(fsPath string, partitionCount int) *sourceRepositories {
+func newGitRepositories(fsPath string, partitionCount int) *sourceRepositories {
 	base := filepath.Base(fsPath)
 
 	return &sourceRepositories{
@@ -191,8 +65,58 @@ func newSourceRepositories(fsPath string, partitionCount int) *sourceRepositorie
 	}
 }
 
+// Find all repositories in the directory
+func (s *baseSource) gitRepos(folder string, out io.Writer, stats *pb.InstructionStat) error {
+	virtualFiles, err := filesystem.List(folder)
+	if err != nil {
+		return fmt.Errorf("Failed to list folder %s: %v", folder, err)
+	}
+
+	for _, vf := range virtualFiles {
+		if !filesystem.IsDir(vf.Location) || strings.Contains(vf.Location, ".") {
+			continue
+		}
+
+		if !s.isRepo(vf.Location) {
+			err = s.gitRepos(vf.Location, out, stats)
+			if err != nil {
+				return err
+			}
+			continue
+		}
+
+		stats.OutputCounter++
+		s := &shardInfo{
+			RepoPath:   vf.Location,
+			DataType:   s.prefix,
+			HasHeader:  s.hasHeader,
+			FilterRefs: s.FilterRefs,
+			AllCommits: s.allCommits,
+		}
+
+		b, err := s.encode()
+		if err != nil {
+			return errors.Wrap(err, "could not encode shard info")
+		}
+		if err := util.NewRow(util.Now(), b).WriteTo(out); err != nil {
+			return errors.Wrap(err, "could not encode row")
+		}
+	}
+
+	return nil
+}
+
+func (s *baseSource) isRepo(path string) bool {
+	p := filepath.Join(path, ".git")
+	_, err := filesystem.Open(p)
+	if err != nil {
+		return false
+	}
+	return true
+}
+
 func (s *baseSource) Generate(f *flow.Flow) *flow.Dataset {
-	return s.genShardInfos(f).RoundRobin(s.prefix, s.partitionCount).Map(s.prefix+".Read", regMapperNewReadShard)
+	return s.genShardInfos(f).RoundRobin(s.prefix, s.partitionCount).Map(s.prefix+".Read", regMapperReadShard)
 }
 
 func (s *baseSource) genShardInfos(f *flow.Flow) *flow.Dataset {
@@ -200,24 +124,25 @@ func (s *baseSource) genShardInfos(f *flow.Flow) *flow.Dataset {
 		stats.InputCounter++
 		defer func() { log.Printf("Git repos: %d", stats.OutputCounter) }()
 
-		// if s.hasWildcard {
-		// 	return s.gitRepos(s.folder, out, stats)
-		// }
+		if s.hasWildcard {
+			return s.gitRepos(s.folder, out, stats)
+		}
 
 		if !filesystem.IsDir(s.path) {
 			return errors.New("source can't be be a file")
 		}
 
-		// if !s.isRepo(s.path) {
-		// 	return s.gitRepos(s.path, out, stats)
-		// }
+		if !s.isRepo(s.path) {
+			return s.gitRepos(s.path, out, stats)
+		}
 
 		stats.OutputCounter++
-		s := &newShardInfo{
+		s := &shardInfo{
 			RepoPath:   s.path,
 			DataType:   s.prefix,
 			HasHeader:  s.hasHeader,
 			FilterRefs: s.FilterRefs,
+			AllCommits: s.allCommits,
 		}
 		b, err := s.encode()
 		if err != nil {
@@ -244,6 +169,15 @@ func (s *sourceReferences) Filter(refs ...string) *sourceReferences {
 func (s *sourceReferences) Commits() *sourceCommits {
 	newSource := s.baseSource
 	newSource.prefix = "commits"
+	return &sourceCommits{
+		baseSource: newSource,
+	}
+}
+
+func (s *sourceReferences) AllReferenceCommits() *sourceCommits {
+	newSource := s.baseSource
+	newSource.prefix = "commits"
+	newSource.allCommits = true
 	return &sourceCommits{
 		baseSource: newSource,
 	}

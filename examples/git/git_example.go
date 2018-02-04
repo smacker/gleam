@@ -5,10 +5,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
-	"os"
-	"time"
 
-	"github.com/chrislusf/gleam/distributed"
 	"github.com/chrislusf/gleam/flow"
 	"github.com/chrislusf/gleam/gio"
 	"github.com/chrislusf/gleam/plugins/git"
@@ -21,12 +18,6 @@ import (
 )
 
 func main() {
-	var (
-		query           = flag.String("query", "", "name the query you want to run")
-		isDistributed   = flag.Bool("distributed", false, "run in distributed or not")
-		isDockerCluster = flag.Bool("onDocker", false, "run in docker cluster")
-	)
-
 	gio.Init()
 
 	var path = "."
@@ -35,25 +26,24 @@ func main() {
 	}
 	log.Printf("analyzing %s", path)
 
-	start := time.Now()
-
-	p, opts, err := queryExample(path, *query)
-	if err != nil {
-		fmt.Printf("could not load query: %s \n", err)
-		os.Exit(0)
-	}
-
-	p.OutputRow(printRow)
-
-	switch {
-	case *isDistributed:
-		opts = append(opts, distributed.Option())
-	case *isDockerCluster:
-		opts = append(opts, distributed.Option().SetMaster("master:45326"))
-	}
-	p.Run(opts...)
-
-	log.Printf("\nprocessed %d rows successfully in %v\n", count, time.Since(start))
+	checkAllRefs(path)
+	fmt.Printf("All refs: %d\n", count)
+	count = 0
+	checkFilterRefs(path, "refs/heads/master")
+	fmt.Printf("Filter refs:%d\n", count)
+	count = 0
+	checkCommits(path, "refs/heads/master")
+	fmt.Printf("Commits: %d\n", count)
+	count = 0
+	checkAllCommits(path, "refs/heads/master")
+	fmt.Printf("all commits: %d\n", count)
+	count = 0
+	checkTrees(path, "refs/heads/master")
+	fmt.Printf("all trees: %d\n", count)
+	count = 0
+	checkAllCommitsTrees(path, "refs/heads/master")
+	fmt.Printf("all commits trees: %d\n", count)
+	count = 0
 }
 
 var (
@@ -63,44 +53,40 @@ var (
 	regKey3 = gio.RegisterMapper(columnToKey(3))
 )
 
-func queryExample(path, query string) (*flow.Dataset, []flow.FlowOption, error) {
-	f := flow.New(fmt.Sprintf("Pipeline: %s", query))
-	var p *flow.Dataset
+func checkAllRefs(path string) {
+	flow.New("test all refs").
+		Read(git.Repositories(path, 1).References()).
+		OutputRow(printRow).Run()
+}
 
-	repos := f.Read(git.Repositories(path, 1))
-	refs := f.Read(git.References(path, 1))
-	commits := f.Read(git.Commits(path, 1))
-	trees := f.Read(git.Trees(path, false, 1))
+func checkFilterRefs(path string, refName string) {
+	flow.New("test refs").
+		Read(git.Repositories(path, 1).References().Filter(refName)).
+		OutputRow(printRow).Run()
+}
 
-	switch query {
-	case "treesJoinRefs":
-		p = trees.
-			Map("KeyRefHash", regKey1).
-			JoinByKey("Trees & References",
-				refs.Map("KeyRefHash", regKey1),
-			)
-	case "allCommitsAcrossAllBranches":
-		p = commits.
-			Map("KeyCommitHash", regKey1).
-			JoinByKey("Commits & References",
-				refs.Map("KeyRefHash", regKey1),
-			)
-	case "repos":
-		p = repos
-	case "refs":
-		p = refs
-	case "commits":
-		p = commits
-	case "trees":
-		p = trees
-	case "new-api-all-refs":
-		p = f.Read(git.NewRepositories(path, 1).References())
-	case "new-api-head-trees":
-		p = f.Read(git.NewRepositories(path, 1).References().Filter("HEAD").Commits().Trees())
-	default:
-		return nil, nil, errors.New("this query is not implemented")
-	}
-	return p, opts, nil
+func checkCommits(path string, refName string) {
+	f := flow.New("test commits")
+	f.Read(git.Repositories(path, 1).References().Filter(refName).Commits()).
+		OutputRow(printRow).Run()
+}
+
+func checkAllCommits(path string, refName string) {
+	f := flow.New("test all commits")
+	f.Read(git.Repositories(path, 1).References().Filter(refName).AllReferenceCommits()).
+		OutputRow(printRow).Run()
+}
+
+func checkTrees(path string, refName string) {
+	f := flow.New("test trees")
+	f.Read(git.Repositories(path, 1).References().Filter(refName).Commits().Trees()).
+		OutputRow(printRow).Run()
+}
+
+func checkAllCommitsTrees(path string, refName string) {
+	f := flow.New("test trees")
+	f.Read(git.Repositories(path, 1).References().Filter(refName).AllReferenceCommits().Trees()).
+		OutputRow(printRow).Run()
 }
 
 var count int64
@@ -108,9 +94,10 @@ var count int64
 func printRow(row *util.Row) error {
 	//	fmt.Printf("\n\n%v\t", row.K[0])
 	count++
-	//	for _, v := range row.V {
-	//		fmt.Printf("%v\t", v)
-	//	}
+	for _, v := range row.V {
+		fmt.Printf("%v\t", v)
+	}
+	fmt.Println()
 	return nil
 }
 

@@ -7,25 +7,41 @@ import (
 	"log"
 	"time"
 
+	"github.com/chrislusf/gleam/distributed"
 	"github.com/chrislusf/gleam/flow"
 	"github.com/chrislusf/gleam/gio"
 	"github.com/chrislusf/gleam/plugins/git"
 	"github.com/chrislusf/gleam/util"
 	"github.com/pkg/errors"
 
-	enry "gopkg.in/src-d/enry.v1"
 	gogit "gopkg.in/src-d/go-git.v4"
 	"gopkg.in/src-d/go-git.v4/plumbing"
 )
 
+var isDistributed = flag.Bool("distributed", false, "run in distributed or not")
+var pathPtr = flag.String("path", ".", "")
+
 func main() {
 	gio.Init()
 
-	var path = "."
-	if args := flag.Args(); len(args) > 0 {
-		path = args[0]
-	}
+	path := *pathPtr
 	log.Printf("analyzing %s", path)
+
+	var opts []flow.FlowOption
+	if *isDistributed {
+		opts = append(opts, distributed.Option())
+	}
+
+	var count int
+	mostUsedLanguages(path).Run(opts...)
+
+	projectUsingMoreThanOneLanguages(path, &count).Run(opts...)
+	fmt.Println("Projects using language more than 1 language: ", count)
+
+	projectsUsingALanguage(path, &count).Run(opts...)
+	fmt.Println("Total", count)
+
+	return
 
 	st := time.Now()
 	checkAllRefs(path)
@@ -34,27 +50,32 @@ func main() {
 	count = 0
 	st = time.Now()
 	checkFilterRefs(path, "refs/heads/master")
-	fmt.Printf("Filter refs:%d\n", count)
+	fmt.Printf("Refs for master:%d\n", count)
 	fmt.Println(time.Now().Sub(st))
 	count = 0
 	st = time.Now()
 	checkCommits(path, "refs/heads/master")
-	fmt.Printf("Commits: %d\n", count)
+	fmt.Printf("Commits for master: %d\n", count)
 	fmt.Println(time.Now().Sub(st))
 	count = 0
 	st = time.Now()
 	checkAllCommits(path, "refs/heads/master")
-	fmt.Printf("all commits: %d\n", count)
+	fmt.Printf("All commits for master: %d\n", count)
 	fmt.Println(time.Now().Sub(st))
 	count = 0
 	st = time.Now()
 	checkTrees(path, "refs/heads/master")
-	fmt.Printf("all trees: %d\n", count)
+	fmt.Printf("Trees for master: %d\n", count)
+	fmt.Println(time.Now().Sub(st))
+	count = 0
+	st = time.Now()
+	checkBlobs(path, "refs/heads/master")
+	fmt.Printf("Blobs for master: %d\n", count)
 	fmt.Println(time.Now().Sub(st))
 	count = 0
 	st = time.Now()
 	checkAllCommitsTrees(path, "refs/heads/master")
-	fmt.Printf("all commits trees: %d\n", count)
+	fmt.Printf("All commits trees: %d\n", count)
 	fmt.Println(time.Now().Sub(st))
 	count = 0
 }
@@ -99,6 +120,12 @@ func checkTrees(path string, refName string) {
 func checkAllCommitsTrees(path string, refName string) {
 	f := flow.New("test trees")
 	f.Read(git.Repositories(path, 1).References().Filter(refName).AllReferenceCommits().Trees()).
+		OutputRow(printRow).Run()
+}
+
+func checkBlobs(path string, refName string) {
+	f := flow.New("test trees")
+	f.Read(git.Repositories(path, 1).References().Filter(refName).Commits().Trees().Blobs()).
 		OutputRow(printRow).Run()
 }
 
@@ -153,14 +180,5 @@ func readBlob(repoPathIdx, blobHashIdx int) gio.Mapper {
 		}
 
 		return gio.Emit(append(x, contents)...)
-	}
-}
-
-func classifyLanguage(filenameIdx, contentIdx int) gio.Mapper {
-	return func(x []interface{}) error {
-		filename := gio.ToString(x[filenameIdx])
-		content := gio.ToBytes(x[contentIdx])
-		lang := enry.GetLanguage(filename, content)
-		return gio.Emit(append(x, lang)...)
 	}
 }

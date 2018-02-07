@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/chrislusf/gleam/plugins/git/readers"
-	"github.com/chrislusf/gleam/plugins/git/repositories"
 	"github.com/chrislusf/gleam/util"
 	git "gopkg.in/src-d/go-git.v4"
 )
@@ -20,7 +19,7 @@ type reader interface {
 
 func (ds *shardInfo) NewReader(r *git.Repository, path string, flag bool) (reader, error) {
 	if ds.DataType == "repositories" {
-		return repositories.NewReader(r, path)
+		return readers.NewRepositories(r, path)
 	}
 
 	refsReader, err := readers.NewReferences(r, path, ds.FilterRefs)
@@ -46,13 +45,22 @@ func (ds *shardInfo) NewReader(r *git.Repository, path string, flag bool) (reade
 		return commitsReader, nil
 	}
 
-	treesReader, err := readers.NewTrees(r, path, commitsReader.GetIter())
-	if err != nil {
-		return nil, err
+	if ds.DataType == "trees" {
+		treesReader, err := readers.NewTrees(r, path, commitsReader.GetIter())
+		if err != nil {
+			return nil, err
+		}
+
+		return treesReader, nil
 	}
 
-	if ds.DataType == "trees" {
-		return treesReader, nil
+	if ds.DataType == "blobs" {
+		blobsReader, err := readers.NewBlobs(r, path, commitsReader.GetIter())
+		if err != nil {
+			return nil, err
+		}
+
+		return blobsReader, nil
 	}
 
 	return nil, fmt.Errorf("unkown data type %q", ds.DataType)

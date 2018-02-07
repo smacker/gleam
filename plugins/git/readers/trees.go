@@ -31,9 +31,6 @@ func (r *Trees) ReadHeader() ([]string, error) {
 		"commitHash",
 		"blobHash",
 		"fileName",
-		// should it be here?
-		"blobSize",
-		"isBinary",
 	}, nil
 }
 
@@ -58,17 +55,10 @@ func (r *Trees) Read() (*util.Row, error) {
 		return nil, errors.Wrap(err, "could not get next file")
 	}
 
-	binary, err := file.IsBinary()
-	if err != nil {
-		return nil, errors.Wrap(err, "could not check whether it's binary")
-	}
-
 	return util.NewRow(util.Now(),
 		r.repositoryID,
 		r.commitHash,
 		file.Blob.Hash.String(),
 		file.Name,
-		file.Blob.Size,
-		binary,
 	), nil
 }
